@@ -31,26 +31,36 @@ __updated__ = '2014-07-28'
 
 DEBUG = 0
 
+
 class CLIError(Exception):
+
     '''Generic exception to raise and log different fatal errors.'''
+
     def __init__(self, msg):
         super(CLIError).__init__(type(self))
         self.msg = "E: %s" % msg
+
     def __str__(self):
         return self.msg
+
     def __unicode__(self):
         return self.msg
-    
-    
+
+
 def fetch_page(web_url):
     page = urllib2.urlopen(web_url)
     content = page.read()
     page.close()
     return content
 
+
 def get_json_url(soup):
-    json_tag = soup.find_all('div', 'video-container', arte_vp_url=re.compile('PLUS7-D'))[0]
+    json_tag = soup.find_all(
+        'div',
+        'video-container',
+        arte_vp_url=re.compile('PLUS7-D'))[0]
     return json_tag.attrs['arte_vp_url']
+
 
 def load_json_ressource(json_url):
     '''
@@ -64,20 +74,51 @@ def load_json_ressource(json_url):
     content = json.loads(content)
     return content
 
+
 def extract_rtmp_params(json_content):
     base = json_content['videoJsonPlayer']['VSR']['RTMP_SQ_1']
     streamer = base['streamer']
     url = base['url']
     return streamer, url
 
-def call_rtmpdump(streamer, url):
-    command = ['rtmpdump', '--tcUrl', streamer, '--playpath', "mp4:"+url, '--rtmp', streamer + url, '-o', 'video_out'+str(os.getpid())]
+
+def extract_html_params(json_content):
+    base = json_content['videoJsonPlayer']['VSR']['HTTP_MP4_SQ_1']
+    url = base['url']
+    return url
+
+
+def call_vlc(url):
+    '''
+    usage: http://www.arte.tv/guide/de/051682-015/fast-die-ganze-wahrheit?autoplay=1?autoplay=1
+    '''
+    command = [
+        'cvlc', '-v',
+        url,
+        '--sout=./video.mp4',
+        'vlc://quit']
+
     print(command)
     subprocess.check_output(command, stderr=subprocess.STDOUT, shell=False)
-    
+    return
 
 
-def main(argv=None): # IGNORE:C0111
+def call_rtmpdump(streamer, url):
+    command = ['rtmpdump',
+               '--tcUrl',
+               streamer,
+               '--playpath',
+               "mp4:" + url,
+               '--rtmp',
+               streamer + url,
+               '-o',
+               'video_out' + str(os.getpid())]
+    print(command)
+    subprocess.check_output(command, stderr=subprocess.STDOUT, shell=False)
+    return
+
+
+def main(argv=None):  # IGNORE:C0111
     '''Command line options.'''
 
     if argv is None:
@@ -88,7 +129,8 @@ def main(argv=None): # IGNORE:C0111
     program_name = os.path.basename(sys.argv[0])
     program_version = "v%s" % __version__
     program_build_date = str(__updated__)
-    program_version_message = '%%(prog)s %s (%s)' % (program_version, program_build_date)
+    program_version_message = '%%(prog)s %s (%s)' % (
+        program_version, program_build_date)
     program_shortdesc = __import__('__main__').__doc__.split("\n")[1]
     program_license = '''%s
 
@@ -99,9 +141,20 @@ USAGE
 
     try:
         # Setup argument parser
-        parser = ArgumentParser(description=program_license, formatter_class=RawDescriptionHelpFormatter)
-        parser.add_argument("-v", "--verbose", dest="verbose", action="count", help="set verbosity level [default: %(default)s]")
-        parser.add_argument('-V', '--version', action='version', version=program_version_message)
+        parser = ArgumentParser(
+            description=program_license,
+            formatter_class=RawDescriptionHelpFormatter)
+        parser.add_argument(
+            "-v",
+            "--verbose",
+            dest="verbose",
+            action="count",
+            help="set verbosity level [default: %(default)s]")
+        parser.add_argument(
+            '-V',
+            '--version',
+            action='version',
+            version=program_version_message)
         parser.add_argument('url')
 
         # Process arguments
@@ -109,25 +162,30 @@ USAGE
         web_url = args.url
 
         verbose = args.verbose
-        
+
+        if verbose > 0:
+            print("Verbose mode on")
+
         content = fetch_page(web_url)
         soup = BeautifulSoup(content)
         json_url = get_json_url(soup)
         print(json_url)
         json_content = load_json_ressource(json_url)
-        streamer, url = extract_rtmp_params(json_content)
-        call_rtmpdump(streamer, url)
-        
 
-        if verbose > 0:
-            print("Verbose mode on")
+        # http
+        vlc_url = extract_html_params(json_content)
+        call_vlc(vlc_url)
 
-        ### do something
-        
+        # rtmp
+        #streamer, url = extract_rtmp_params(json_content)
+        #call_rtmpdump(streamer, url)
+
+        # do something
+
     except KeyboardInterrupt:
         ### handle keyboard interrupt ###
         return 0
-    except Exception, e:
+    except Exception as e:
         if DEBUG:
             raise(e)
         indent = len(program_name) * " "
