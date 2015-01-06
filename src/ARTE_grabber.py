@@ -15,21 +15,38 @@ It defines classes_and_methods
 
 import sys
 import os
+import logging
 
 from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
-from bs4 import BeautifulSoup
+try:
+    from bs4 import BeautifulSoup
+except:
+    print('Need Beatiful Soup')
+    sys.exit(1)
+    
 import urllib2
+    
 import re
 import json
 import subprocess
+
+# Setup logger
+
+logger = logging.getLogger(name='ARTE_grabber')
+logger.setLevel(logging.DEBUG)
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.DEBUG)
+fmt = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(fmt)
+logger.addHandler(console_handler)
 
 __all__ = []
 __version__ = 0.1
 __date__ = '2014-07-28'
 __updated__ = '2014-07-28'
 
-DEBUG = 0
+DEBUG = 1
 
 
 class CLIError(Exception):
@@ -48,7 +65,7 @@ class CLIError(Exception):
 
 
 def fetch_page(web_url):
-    page = urllib2.urlopen(web_url)
+    page = urllib2.urlopen(web_url, timeout=1)
     content = page.read()
     page.close()
     return content
@@ -60,8 +77,7 @@ def get_json_url(soup):
         'video-container',
         arte_vp_url=re.compile('PLUS7-D'))[0]
     return json_tag.attrs['arte_vp_url']
-
-
+        
 def load_json_ressource(json_url):
     '''
     Retrun the content of a json file or web resource
@@ -74,12 +90,22 @@ def load_json_ressource(json_url):
     content = json.loads(content)
     return content
 
-
 def extract_rtmp_params(json_content):
     base = json_content['videoJsonPlayer']['VSR']['RTMP_SQ_1']
     streamer = base['streamer']
     url = base['url']
     return streamer, url
+
+def get_console_logger():
+    
+    logger = logging.getLogger(name='ARTE_grabber')
+    logger.setLevel(logging.DEBUG)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.DEBUG)
+    fmt = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(fmt)
+    logger.addHandler(console_handler)
+    return logger
 
 
 def extract_html_params(json_content):
@@ -92,18 +118,25 @@ def call_vlc(url):
     '''
     usage: http://www.arte.tv/guide/de/051682-015/fast-die-ganze-wahrheit?autoplay=1?autoplay=1
     '''
+    url = 'wrong_url'
     command = [
         'cvlc', '-v',
         url,
-        '--sout=./video.mp4',
+        '--sout=./video'+str(os.getpid())+'.mp4',
         'vlc://quit']
-
-    print(command)
-    subprocess.check_output(command, stderr=subprocess.STDOUT, shell=False)
+    try:
+        logger.info('Trying vlc command: '+' '.join(command))
+        subprocess.check_output(command, stderr=subprocess.STDOUT, shell=False)
+    except subprocess.CalledProcessError as errorvariable:
+        # Catch only this specific type of exception
+        print('vlc process failed')
+        logger.info('Failed command is: '+' '.join(command))
+        print(errorvariable.output)
     return
 
 
 def call_rtmpdump(streamer, url):
+    "used with arte 7"
     command = ['rtmpdump',
                '--tcUrl',
                streamer,
@@ -137,8 +170,8 @@ def main(argv=None):  # IGNORE:C0111
   Created by user_name on %s.
 
 USAGE
-''' % (program_shortdesc, str(__date__))
-
+''' % (program_shortdesc, str(__date__))    
+    
     try:
         # Setup argument parser
         parser = ArgumentParser(
@@ -165,20 +198,27 @@ USAGE
 
         if verbose > 0:
             print("Verbose mode on")
-
-        content = fetch_page(web_url)
+            
+        
+        try:
+            content = fetch_page(web_url)
+        except:
+            print('Internet probably disconnected')
         soup = BeautifulSoup(content)
         json_url = get_json_url(soup)
-        print(json_url)
-        json_content = load_json_ressource(json_url)
-
-        # http
+        logger.info(json_url)
+        json_content = load_json_ressource(json_url) 
+        
         vlc_url = extract_html_params(json_content)
         call_vlc(vlc_url)
-
-        # rtmp
+        logger.info('Falling back on rtmp')
         #streamer, url = extract_rtmp_params(json_content)
         #call_rtmpdump(streamer, url)
+
+        
+
+        
+        
 
         # do something
 
@@ -195,7 +235,7 @@ USAGE
 
 if __name__ == "__main__":
     if DEBUG:
-        sys.argv.append("-h")
+        #sys.argv.append("-h")
         sys.argv.append("-v")
-        sys.argv.append("-r")
+        #sys.argv.append("-r")
     sys.exit(main())

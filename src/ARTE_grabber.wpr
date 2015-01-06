@@ -11,3 +11,6 @@ proj.directory-list = [{'dirloc': loc('.'),
                         'recursive': True,
                         'watch_for_changes': True}]
 proj.file-type = 'shared'
+proj.launch-config = {loc('ARTE_grabber.py'): ('project',
+        (u'http://www.arte.tv/guide/de/042264-001/gelobtes-land-1-4?autoplay=1?autoplay=1',
+         ''))}
